@@ -1,10 +1,13 @@
 package server
 
-import "time"
+import (
+	"time"
+)
 
 type Config struct {
-	Port         uint16
-	QueryTimeout time.Duration
+	Port          uint16
+	QueryTimeout  time.Duration
+	ListenAddress []string
 }
 
 func NewDefaultConfig() Config {

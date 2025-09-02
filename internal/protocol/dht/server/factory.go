@@ -43,24 +43,47 @@ func New(p Params) Result {
 	lastResponses := &concurrency.AtomicValue[LastResponses]{}
 	collector := newPrometheusCollector()
 	ls := lazy.New(func() (Server, error) {
+		idIssuer := &variantIDIssuer{}
+		logger := p.Logger.Named(subsystem)
+		newBaseServer := func(addr netip.Addr) *server {
+			return &server{
+				stopped: make(chan struct{}),
+				localAddr: netip.AddrPortFrom(
+					addr,
+					p.Config.Port,
+				),
+				socket:           NewSocket(),
+				queries:          make(map[string]chan dht.RecvMsg),
+				queryTimeout:     p.Config.QueryTimeout,
+				responder:        p.Responder,
+				responderTimeout: time.Second * 5,
+				idIssuer:         idIssuer,
+				logger:           logger,
+			}
+		}
+		var internalServer Server
+		if len(p.Config.ListenAddress) == 0 {
+			// Keep the existing behavior of IPv4 only.
+			internalServer = newBaseServer(netip.IPv4Unspecified())
+		} else {
+			servers := make([]*server, 0, len(p.Config.ListenAddress))
+			for _, addr := range p.Config.ListenAddress {
+				parsedAddr, err := netip.ParseAddr(addr)
+				if err != nil {
+					return nil, fmt.Errorf("could not parse listen address %s: %w", addr, err)
+				}
+				servers = append(servers, newBaseServer(parsedAddr))
+			}
+			internalServer = &MultiplexServer{
+				servers: servers,
+			}
+		}
+
 		s := queryLimiter{
 			server: prometheusServerWrapper{
 				prometheusCollector: collector,
 				server: healthCollector{
-					baseServer: &server{
-						stopped: make(chan struct{}),
-						localAddr: netip.AddrPortFrom(
-							netip.IPv4Unspecified(),
-							p.Config.Port,
-						),
-						socket:           NewSocket(),
-						queries:          make(map[string]chan dht.RecvMsg),
-						queryTimeout:     p.Config.QueryTimeout,
-						responder:        p.Responder,
-						responderTimeout: time.Second * 5,
-						idIssuer:         &variantIDIssuer{},
-						logger:           p.Logger.Named(subsystem),
-					},
+					baseServer:    internalServer,
 					lastResponses: lastResponses,
 				},
 			},

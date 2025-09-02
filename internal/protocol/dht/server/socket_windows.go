@@ -14,19 +14,35 @@ type socket struct {
 }
 
 func newSocket() Socket {
-	fd, _ := windows.Socket(windows.AF_INET, windows.SOCK_DGRAM, 0)
-	return &socket{fd: fd}
+	return &socket{fd: windows.InvalidHandle}
 }
 
 func (s *socket) Open(localAddr netip.AddrPort) error {
+	family := windows.AF_INET
+	if localAddr.Addr().Is6() {
+		family = windows.AF_INET6
+	}
+	fd, err := windows.Socket(family, windows.SOCK_DGRAM, 0)
+	if err != nil {
+		return fmt.Errorf("error creating socket: %w", err)
+	}
 	sAddr, addrErr := addrPortToSockaddr(localAddr)
 	if addrErr != nil {
+		_ = windows.Close(fd)
 		return addrErr
 	}
-	return windows.Bind(s.fd, sAddr)
+	if err := windows.Bind(fd, sAddr); err != nil {
+		_ = windows.Close(fd)
+		return err
+	}
+	s.fd = fd
+	return nil
 }
 
 func (s *socket) Close() error {
+	if s.fd == windows.InvalidHandle {
+		return nil
+	}
 	return windows.Close(s.fd)
 }
 

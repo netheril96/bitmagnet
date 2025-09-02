@@ -20,6 +20,12 @@ type Server interface {
 	Query(ctx context.Context, addr netip.AddrPort, q string, args dht.MsgArgs) (dht.RecvMsg, error)
 }
 
+type MultiplexServer struct {
+	servers        []*server
+	startedServers []*server
+	mutex          sync.RWMutex
+}
+
 type server struct {
 	stopped          chan struct{}
 	mutex            sync.Mutex
@@ -48,6 +54,101 @@ func (s *server) start() error {
 	}()
 
 	return nil
+}
+
+func (s *MultiplexServer) start() error {
+	var wg sync.WaitGroup
+	startedCh := make(chan *server, len(s.servers))
+	errCh := make(chan error, len(s.servers))
+
+	for _, srv := range s.servers {
+		wg.Add(1)
+		go func(srv *server) {
+			defer wg.Done()
+			if err := srv.start(); err != nil {
+				srv.logger.Errorw("could not start server", "addr", srv.localAddr, "error", err)
+				errCh <- err
+			} else {
+				srv.logger.Infow("server started successfully", "addr", srv.localAddr)
+				startedCh <- srv
+			}
+		}(srv)
+	}
+
+	wg.Wait()
+	close(startedCh)
+	close(errCh)
+
+	s.mutex.Lock()
+	for srv := range startedCh {
+		s.startedServers = append(s.startedServers, srv)
+	}
+	s.mutex.Unlock()
+
+	if len(s.startedServers) > 0 {
+		return nil
+	}
+
+	if len(s.servers) == 0 {
+		return errors.New("no servers configured")
+	}
+
+	var allErrors []error
+	for err := range errCh {
+		allErrors = append(allErrors, err)
+	}
+	return fmt.Errorf("could not start any server: %w", errors.Join(allErrors...))
+}
+
+func (s *MultiplexServer) stop() {
+	for _, srv := range s.startedServers {
+		srv.logger.Infow("stopping server", "addr", srv.localAddr)
+		srv.stop()
+	}
+	s.startedServers = make([]*server, 0)
+}
+
+func (s *MultiplexServer) Query(
+	ctx context.Context,
+	addr netip.AddrPort,
+	q string,
+	args dht.MsgArgs,
+) (dht.RecvMsg, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	var candidates []*server
+	isIPv4 := addr.Addr().Is4()
+	for _, srv := range s.startedServers {
+		if srv.localAddr.Addr().Is4() == isIPv4 {
+			candidates = append(candidates, srv)
+		}
+	}
+
+	if !isIPv4 && !addr.Addr().Is6() {
+		return dht.RecvMsg{}, errors.New("address is not IPv4 or IPv6")
+	}
+
+	if len(candidates) == 0 {
+		family := "IPv6"
+		if isIPv4 {
+			family = "IPv4"
+		}
+		return dht.RecvMsg{}, fmt.Errorf("%s server not available", family)
+	}
+
+	var errs []error
+	for _, srv := range candidates {
+		res, err := srv.Query(ctx, addr, q, args)
+		if err != nil {
+			srv.logger.Debugw("query failed on server, trying next", "query", q, "addr", addr, "local_addr", srv.localAddr, "error", err)
+			errs = append(errs, err)
+			continue
+		}
+		srv.logger.Debugw("query succeeded on server", "query", q, "addr", addr, "local_addr", srv.localAddr)
+		return res, nil
+	}
+
+	return dht.RecvMsg{}, fmt.Errorf("all queries failed for %s: %w", addr.String(), errors.Join(errs...))
 }
 
 func (s *server) stop() {
