@@ -127,7 +127,7 @@ func (r requester) Request(ctx context.Context, infoHash protocol.ID, addr netip
 }
 
 func (r requester) connect(ctx context.Context, addr netip.AddrPort) (conn *net.TCPConn, err error) {
-	c, dialErr := r.dialer.DialContext(ctx, "tcp4", addr.String())
+	c, dialErr := r.dialer.DialContext(ctx, "tcp", addr.String())
 	if dialErr != nil {
 		err = dialErr
 		return
