@@ -119,12 +119,15 @@ func (a serverAdapter) SampleInfoHashes(
 }
 
 func extractNodes(msg dht.Msg) []NodeInfo {
-	if len(msg.R.Nodes) == 0 {
+	if len(msg.R.Nodes) == 0 && len(msg.R.Nodes6) == 0 {
 		return nil
 	}
 
-	nodes := make([]NodeInfo, 0, len(msg.R.Nodes))
+	nodes := make([]NodeInfo, 0, len(msg.R.Nodes)+len(msg.R.Nodes6))
 	for _, n := range msg.R.Nodes {
+		nodes = append(nodes, NodeInfo{ID: n.ID, Addr: n.Addr.ToAddrPort()})
+	}
+	for _, n := range msg.R.Nodes6 {
 		nodes = append(nodes, NodeInfo{ID: n.ID, Addr: n.Addr.ToAddrPort()})
 	}
 
