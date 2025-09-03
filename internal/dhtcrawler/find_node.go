@@ -10,7 +10,10 @@ import (
 
 func (c *crawler) getNodesForFindNode(ctx context.Context) {
 	for {
-		peers := c.kTable.GetOldestNodes(time.Now().Add(-(5 * time.Second)), 10)
+		cutoff := time.Now().Add(-(5 * time.Second))
+		peers := concatResultFromBothTables(c, func(table ktable.Table) []ktable.Node {
+			return table.GetOldestNodes(cutoff, 10)
+		})
 		for _, p := range peers {
 			select {
 			case <-ctx.Done():
@@ -26,14 +29,15 @@ func (c *crawler) getNodesForFindNode(ctx context.Context) {
 
 func (c *crawler) runFindNode(ctx context.Context) {
 	_ = c.nodesForFindNode.Run(ctx, func(p ktable.Node) {
+		table := c.getTableForIpFamily(p.Addr().Addr())
 		res, err := c.client.FindNode(ctx, p.Addr(), c.soughtNodeID.Get())
 		if err != nil {
-			c.kTable.BatchCommand(ktable.DropNode{
+			table.BatchCommand(ktable.DropNode{
 				ID:     p.ID(),
 				Reason: fmt.Errorf("find_node failed: %w", err),
 			})
 		} else {
-			c.kTable.BatchCommand(ktable.PutNode{
+			table.BatchCommand(ktable.PutNode{
 				ID:      p.ID(),
 				Addr:    p.Addr(),
 				Options: []ktable.NodeOption{ktable.NodeResponded()},

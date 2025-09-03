@@ -32,8 +32,9 @@ func (c *crawler) requestScrape(
 	req nodeHasPeersForHash,
 ) (infoHashWithScrape, error) {
 	res, err := c.client.GetPeersScrape(ctx, req.node, req.infoHash)
+	table := c.getTableForIpFamily(req.node.Addr())
 	if err != nil {
-		c.kTable.BatchCommand(ktable.DropAddr{
+		table.BatchCommand(ktable.DropAddr{
 			Addr:   req.node.Addr(),
 			Reason: fmt.Errorf("failed to get peers from p: %w", err),
 		})
@@ -41,7 +42,7 @@ func (c *crawler) requestScrape(
 		return infoHashWithScrape{}, err
 	}
 
-	c.kTable.BatchCommand(ktable.PutNode{
+	table.BatchCommand(ktable.PutNode{
 		ID:      res.ID,
 		Addr:    req.node,
 		Options: []ktable.NodeOption{ktable.NodeResponded()},
@@ -50,10 +51,11 @@ func (c *crawler) requestScrape(
 	if len(res.Nodes) > 0 {
 		cancelCtx, cancel := context.WithTimeout(ctx, time.Second)
 
+	LOOP:
 		for _, n := range res.Nodes {
 			select {
 			case <-cancelCtx.Done():
-				break
+				break LOOP
 			case c.discoveredNodes.In() <- ktable.NewNode(n.ID, n.Addr):
 				continue
 			}

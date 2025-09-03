@@ -29,14 +29,14 @@ func (c *crawler) runPing(ctx context.Context) {
 				err = errors.New("node responded with a mismatching ID")
 			}
 		}
-
+		table := c.getTableForIpFamily(n.Addr().Addr())
 		if err != nil {
-			c.kTable.BatchCommand(ktable.DropNode{
+			table.BatchCommand(ktable.DropNode{
 				ID:     nodeID,
 				Reason: fmt.Errorf("failed to respond to ping: %w", err),
 			})
 		} else {
-			c.kTable.BatchCommand(ktable.PutNode{
+			table.BatchCommand(ktable.PutNode{
 				ID:      nodeID,
 				Addr:    n.Addr(),
 				Options: []ktable.NodeOption{ktable.NodeResponded()},
@@ -54,7 +54,10 @@ func (c *crawler) getOldNodes(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-time.After(c.getOldestNodesInterval):
-			for _, p := range c.kTable.GetOldestNodes(time.Now().Add(-c.oldPeerThreshold), 0) {
+			cutoff := time.Now().Add(-c.oldPeerThreshold)
+			for _, p := range concatResultFromBothTables(c, func(table ktable.Table) []ktable.Node {
+				return table.GetOldestNodes(cutoff, 10)
+			}) {
 				select {
 				case <-ctx.Done():
 					return

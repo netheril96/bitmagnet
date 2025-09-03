@@ -10,7 +10,9 @@ import (
 
 func (c *crawler) getNodesForSampleInfoHashes(ctx context.Context) {
 	for {
-		peers := c.kTable.GetNodesForSampleInfoHashes(60)
+		peers := concatResultFromBothTables(c, func(table ktable.Table) []ktable.Node {
+			return table.GetNodesForSampleInfoHashes(60)
+		})
 		for _, p := range peers {
 			select {
 			case <-ctx.Done():
@@ -30,9 +32,11 @@ func (c *crawler) runSampleInfoHashes(ctx context.Context) {
 			return
 		}
 
+		table := c.getTableForIpFamily(n.Addr().Addr())
+
 		res, err := c.client.SampleInfoHashes(ctx, n.Addr(), c.soughtNodeID.Get())
 		if err != nil {
-			c.kTable.BatchCommand(
+			table.BatchCommand(
 				ktable.DropNode{ID: n.ID(), Reason: fmt.Errorf("sample_infohashes failed: %w", err)},
 			)
 
@@ -66,7 +70,7 @@ func (c *crawler) runSampleInfoHashes(ctx context.Context) {
 			interval = 60
 		}
 
-		c.kTable.BatchCommand(ktable.PutNode{ID: n.ID(), Addr: n.Addr(), Options: []ktable.NodeOption{
+		table.BatchCommand(ktable.PutNode{ID: n.ID(), Addr: n.Addr(), Options: []ktable.NodeOption{
 			ktable.NodeResponded(),
 			ktable.NodeBep51Support(true),
 			ktable.NodeSampleInfoHashesRes(

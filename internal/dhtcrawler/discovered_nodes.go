@@ -3,10 +3,12 @@ package dhtcrawler
 import (
 	"context"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/concurrency"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/dht/ktable"
+	"github.com/bitmagnet-io/bitmagnet/internal/rand"
 	"go.uber.org/fx"
 )
 
@@ -36,18 +38,26 @@ func (c *crawler) runDiscoveredNodes(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case ps := <-c.discoveredNodes.Out():
-			addrs := make([]netip.Addr, 0, 1)
+			addrs4 := make([]netip.Addr, 0, 1)
+			addrs6 := make([]netip.Addr, 0, 1)
 
 			m := make(map[string]ktable.Node, 1)
 			for _, p := range ps {
 				if _, ok := m[p.Addr().Addr().String()]; !ok {
 					m[p.Addr().Addr().String()] = p
-					addrs = append(addrs, p.Addr().Addr())
+					if p.Addr().Addr().Is4() {
+						addrs4 = append(addrs4, p.Addr().Addr())
+					} else {
+						addrs6 = append(addrs6, p.Addr().Addr())
+					}
 				}
 			}
 			// for any discovered node not already in the routing table,
 			// we will block until it can be sent to any one of the pipeline channels.
-			unknownAddrs := c.kTable.FilterKnownAddrs(addrs)
+			unknownAddrs := slices.Concat(c.kTable.FilterKnownAddrs(addrs4), c.kTable6.FilterKnownAddrs(addrs6))
+			if c.rand != nil {
+				rand.Shuffle(c.rand, unknownAddrs)
+			}
 			for _, addr := range unknownAddrs {
 				p := m[addr.String()]
 				select {

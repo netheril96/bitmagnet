@@ -3,6 +3,7 @@ package dhtcrawler
 import (
 	"context"
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/banning"
 	"github.com/bitmagnet-io/bitmagnet/internal/protocol/metainfo/metainforequester"
+	"github.com/bitmagnet-io/bitmagnet/internal/rand"
 	"github.com/prometheus/client_golang/prometheus"
 	boom "github.com/tylertreat/BoomFilters"
 	"go.uber.org/zap"
@@ -23,6 +25,7 @@ import (
 
 type crawler struct {
 	kTable                       ktable.Table
+	kTable6                      ktable.Table
 	client                       client.Client
 	metainfoRequester            metainforequester.Requester
 	banningChecker               banning.Checker
@@ -56,6 +59,7 @@ type crawler struct {
 	stopped        chan struct{}
 	persistedTotal *prometheus.CounterVec
 	logger         *zap.SugaredLogger
+	rand           *rand.CryptoSeededRand
 }
 
 func (c *crawler) start() {
@@ -122,4 +126,21 @@ func (c *crawler) rotateSoughtNodeID(ctx context.Context) {
 			c.soughtNodeID.Set(protocol.RandomNodeID())
 		}
 	}
+}
+
+func (c *crawler) getTableForIpFamily(addr netip.Addr) ktable.Table {
+	if addr.Is4() {
+		return c.kTable
+	}
+	return c.kTable6
+}
+
+func concatResultFromBothTables[R any](c *crawler, callable func(table ktable.Table) []R) []R {
+	result4 := callable(c.kTable)
+	result6 := callable(c.kTable6)
+	concat := slices.Concat(result4, result6)
+	if c.rand != nil {
+		rand.Shuffle(c.rand, concat)
+	}
+	return concat
 }
