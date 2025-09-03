@@ -247,24 +247,10 @@ keywords:
     - "*wank*"
     - "*xxx*"
   banned:
-    - pa?edo(fil*|phil*)?
-    - preteen
-    - pthc
-    - ptsc
-    - lsbar
-    - lsm
-    - underage
-    - hebefilia
-    - opva
     - child ?porn*
     - child ?lover*
     - porno ?child*
     - kidd(y*|ie*) ?porn
-    - young ?video ?models
-    - childfugga
-    - kinderkutje
-    - yvm
-    - (#|10|11|12|13|14|15|16|17) ?y ?o
 flag_definitions:
   local_search_enabled: bool
   apis_enabled: bool
