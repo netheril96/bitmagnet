@@ -14,9 +14,8 @@ type Params struct {
 	NodeID ID `name:"dht_node_id"`
 }
 
-type Result struct {
+type TableNodesResult struct {
 	fx.Out
-	Table                Table
 	NodesCountGauge      prometheus.Collector `group:"prometheus_collectors"`
 	NodesAddedCounter    prometheus.Collector `group:"prometheus_collectors"`
 	NodesDroppedCounter  prometheus.Collector `group:"prometheus_collectors"`
@@ -25,12 +24,37 @@ type Result struct {
 	HashesDroppedCounter prometheus.Collector `group:"prometheus_collectors"`
 }
 
+type Result struct {
+	fx.Out
+	Table Table
+	Nodes TableNodesResult
+}
+
+type Result64 struct {
+	fx.Out
+	Table  Table `name:"ipv4"`
+	Table6 Table `name:"ipv6"`
+	Nodes  TableNodesResult
+	Nodes6 TableNodesResult
+}
+
 const (
 	nodesK  = 80
 	hashesK = 80
 )
 
-func New(p Params) Result {
+func New64(p Params) Result64 {
+	result4 := New(p, "_4")
+	result6 := New(p, "_6")
+	return Result64{
+		Table:  result4.Table,
+		Table6: result6.Table,
+		Nodes:  result4.Nodes,
+		Nodes6: result6.Nodes,
+	}
+}
+
+func New(p Params, nameSuffix string) Result {
 	rm := &reverseMap{addrs: make(map[string]*infoForAddr)}
 	nodes := nodeKeyspace{
 		keyspace: newKeyspace[netip.AddrPort, NodeOption, Node, *node](
@@ -48,7 +72,7 @@ func New(p Params) Result {
 			},
 		),
 	}
-	nodesCollector := patchPrometheusCollector("nodes", &nodes.keyspace)
+	nodesCollector := patchPrometheusCollector("nodes"+nameSuffix, &nodes.keyspace)
 	hashes := hashKeyspace{
 		keyspace: newKeyspace[[]HashPeer, HashOption, Hash, *hash](
 			p.NodeID,
@@ -68,7 +92,7 @@ func New(p Params) Result {
 			},
 		),
 	}
-	hashesCollector := patchPrometheusCollector("hashes", &hashes.keyspace)
+	hashesCollector := patchPrometheusCollector("hashes"+nameSuffix, &hashes.keyspace)
 
 	return Result{
 		Table: &table{
@@ -79,12 +103,14 @@ func New(p Params) Result {
 			hashes:  hashes,
 			addrs:   rm,
 		},
-		NodesCountGauge:      nodesCollector.CountGauge,
-		NodesAddedCounter:    nodesCollector.AddedCounter,
-		NodesDroppedCounter:  nodesCollector.DroppedCounter,
-		HashesCountGauge:     hashesCollector.CountGauge,
-		HashesAddedCounter:   hashesCollector.AddedCounter,
-		HashesDroppedCounter: hashesCollector.DroppedCounter,
+		Nodes: TableNodesResult{
+			NodesCountGauge:      nodesCollector.CountGauge,
+			NodesAddedCounter:    nodesCollector.AddedCounter,
+			NodesDroppedCounter:  nodesCollector.DroppedCounter,
+			HashesCountGauge:     hashesCollector.CountGauge,
+			HashesAddedCounter:   hashesCollector.AddedCounter,
+			HashesDroppedCounter: hashesCollector.DroppedCounter,
+		},
 	}
 }
 
@@ -123,10 +149,4 @@ func patchPrometheusCollector[
 	ks.btree = collector
 
 	return collector
-}
-
-func NewFactory(p Params) func() Table {
-	return func() Table {
-		return New(p).Table
-	}
 }
