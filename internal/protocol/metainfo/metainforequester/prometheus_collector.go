@@ -10,17 +10,19 @@ import (
 )
 
 type prometheusCollector struct {
-	requester           Requester
-	requestDuration     prometheus.Histogram
-	requestSuccessTotal prometheus.Counter
-	requestErrorTotal   prometheus.Counter
-	requestConcurrency  prometheus.Gauge
+	requester               Requester
+	requestDuration         prometheus.Histogram
+	requestSuccessTotal     *prometheus.CounterVec
+	requestErrorTotal       *prometheus.CounterVec
+	requestConcurrency      prometheus.Gauge
 }
 
 const (
 	namespace = "bitmagnet"
 	subsystem = "meta_info_requester"
 )
+
+var ipVersionLabelNames = []string{"ip_version"}
 
 func newPrometheusCollector(requester Requester) *prometheusCollector {
 	return &prometheusCollector{
@@ -32,18 +34,18 @@ func newPrometheusCollector(requester Requester) *prometheusCollector {
 			Help:      "Duration of successful meta info requests in seconds.",
 			Buckets:   prometheus.DefBuckets,
 		}),
-		requestSuccessTotal: prometheus.NewCounter(prometheus.CounterOpts{
+		requestSuccessTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "success_total",
 			Help:      "Total number of successful meta info requests.",
-		}),
-		requestErrorTotal: prometheus.NewCounter(prometheus.CounterOpts{
+		}, ipVersionLabelNames),
+		requestErrorTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "error_total",
 			Help:      "Total number of failed meta info requests.",
-		}),
+		}, ipVersionLabelNames),
 		requestConcurrency: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
@@ -60,11 +62,16 @@ func (l prometheusCollector) Request(ctx context.Context, infoHash protocol.ID, 
 	resp, err := l.requester.Request(ctx, infoHash, addr)
 	l.requestConcurrency.Dec()
 
+	ipVersion := "6"
+	if addr.Addr().Is4() {
+		ipVersion = "4"
+	}
+
 	if err == nil {
 		l.requestDuration.Observe(time.Since(start).Seconds())
-		l.requestSuccessTotal.Inc()
+		l.requestSuccessTotal.WithLabelValues(ipVersion).Inc()
 	} else {
-		l.requestErrorTotal.Inc()
+		l.requestErrorTotal.WithLabelValues(ipVersion).Inc()
 	}
 
 	return resp, err

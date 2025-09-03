@@ -17,8 +17,9 @@ type prometheusCollector struct {
 }
 
 const labelQuery = "query"
+const labelIpVersion = "ip_version"
 
-var labelNames = []string{labelQuery}
+var labelNames = []string{labelQuery, labelIpVersion}
 
 func newPrometheusCollector(responder Responder) prometheusCollector {
 	return prometheusCollector{
@@ -52,7 +53,11 @@ func newPrometheusCollector(responder Responder) prometheusCollector {
 }
 
 func (l prometheusCollector) Respond(ctx context.Context, msg dht.RecvMsg) (dht.Return, error) {
-	labels := prometheus.Labels{labelQuery: normalizeQuery(msg.Msg.Q)}
+	ipVersion := "4"
+	if msg.From.Addr().Is6() {
+		ipVersion = "6"
+	}
+	labels := prometheus.Labels{labelQuery: normalizeQuery(msg.Msg.Q), labelIpVersion: ipVersion}
 	l.queryConcurrency.With(labels).Inc()
 
 	start := time.Now()
