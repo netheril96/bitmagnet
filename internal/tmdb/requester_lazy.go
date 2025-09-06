@@ -56,24 +56,35 @@ func newRequester(ctx context.Context, config Config, logger *zap.SugaredLogger)
 		config.RateLimitBurst = 8
 	}
 
+	var limiter = rate.NewLimiter(rate.Every(config.RateLimit), config.RateLimitBurst)
+	var semaphore = semaphore.NewWeighted(2)
+
 	r := requesterLogger{
 		requester: requesterFailFast{
-			requester: requesterSemaphore{
-				requester: requesterLimiter{
-					requester: requester{
-						resty: resty.New().
-							SetBaseURL(config.BaseURL).
-							SetQueryParam("api_key", config.APIKey).
-							SetRetryCount(3).
-							SetRetryWaitTime(2 * time.Second).
-							SetRetryMaxWaitTime(20 * time.Second).
-							SetTimeout(10 * time.Second).
-							EnableTrace().
-							SetLogger(logger),
-					},
-					limiter: rate.NewLimiter(rate.Every(config.RateLimit), config.RateLimitBurst),
-				},
-				semaphore: semaphore.NewWeighted(2),
+			requester: requester{
+				resty: resty.New().
+					SetBaseURL(config.BaseURL).
+					SetQueryParam("api_key", config.APIKey).
+					SetRetryCount(3).
+					SetRetryWaitTime(2 * time.Second).
+					SetRetryMaxWaitTime(20 * time.Second).
+					SetTimeout(10 * time.Second).
+					EnableTrace().
+					SetLogger(logger).
+					OnBeforeRequest(func(c *resty.Client, r *resty.Request) error {
+						if err := semaphore.Acquire(ctx, 1); err != nil {
+							return err
+						}
+						if err := limiter.Wait(ctx); err != nil {
+							semaphore.Release(1)
+							return err
+						}
+						return nil
+					}).
+					OnAfterResponse(func(c *resty.Client, r *resty.Response) error {
+						semaphore.Release(1)
+						return nil
+					}),
 			},
 			isUnauthorized: &concurrency.AtomicValue[bool]{},
 		},
