@@ -40,7 +40,7 @@ func New(p Params) Result {
 					ZapLogger: p.Logger,
 					Config: logger.Config{
 						LogLevel:      gormlogger.Info,
-						SlowThreshold: time.Second * 30,
+						SlowThreshold: time.Second * 90,
 					},
 				}).GormLogger,
 				DisableAutomaticPing: true,
