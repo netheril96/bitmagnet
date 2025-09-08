@@ -39,7 +39,7 @@ func New(p Params) Result {
 
 					return pr.Process(ctx, *msg)
 				},
-				handler.JobTimeout(time.Second*60*10),
+				handler.JobTimeout(time.Hour),
 				handler.Concurrency(1),
 			), nil
 		}),

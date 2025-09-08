@@ -151,7 +151,7 @@ func New(p Params) Result {
 					}
 					return nil
 				},
-				handler.JobTimeout(time.Second*60*10),
+				handler.JobTimeout(time.Hour),
 				handler.Concurrency(1),
 			), nil
 		}),
