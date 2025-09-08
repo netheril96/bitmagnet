@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 
@@ -48,20 +49,30 @@ func New(p Params) Result {
 							return buildErr
 						}
 					}
+					network := "tcp"
+					addr := p.Config.LocalAddress
+					serverAddr := addr
+					if len(addr) > 0 && addr[0] == '/' {
+						network = "unix"
+						serverAddr = ""
+						if err := os.Remove(addr); err != nil && !os.IsNotExist(err) {
+							return err
+						}
+					}
 					s = &http.Server{
-						Addr:    p.Config.LocalAddress,
+						Addr:    serverAddr,
 						Handler: g.Handler(),
 					}
-					ln, listenErr := net.Listen("tcp", s.Addr)
+					ln, listenErr := net.Listen(network, addr)
 					if listenErr != nil {
 						return listenErr
 					}
-					go (func() {
+					go func() {
 						serveErr := s.Serve(ln)
 						if !errors.Is(serveErr, http.ErrServerClosed) {
 							panic(serveErr)
 						}
-					})()
+					}()
 					return nil
 				},
 				OnStop: func(ctx context.Context) error {
