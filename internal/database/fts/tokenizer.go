@@ -1,11 +1,9 @@
 package fts
 
 import (
-	"strings"
 	"unicode"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/lexer"
-	"github.com/mozillazg/go-unidecode/table"
 )
 
 func Tokenize(str string) [][]string {
@@ -49,9 +47,6 @@ func (l *tokenizerLexer) readPhrase() []string {
 			lexeme = ""
 		}
 	}
-	appendStr := func(str string) {
-		lexeme += str
-	}
 
 	for {
 		if l.IsEOF() {
@@ -61,36 +56,16 @@ func (l *tokenizerLexer) readPhrase() []string {
 
 		if ch, ok := l.ReadIf(lexer.IsWordChar); ok {
 			ch = unicode.ToLower(ch)
-			if ch < unicode.MaxASCII {
-				appendStr(string(ch))
+			// If the character is determined to be a language with unspaced words
+			// (e.g. Chinese, Japanese), each character will become a token;
+			// using this cutoff might not be perfect.
+			isNonBreakingLang := ch > '\u1FFF'
+			if isNonBreakingLang {
+				breakWord()
+				phrase = append(phrase, string(ch))
 			} else {
-				// If the character is determined to be a language with unspaced words
-				// (e.g. Chinese, Japanese), each character will become a token;
-				// using this cutoff might not be perfect.
-				isNonBreakingLang := ch > '\u1FFF'
-				if isNonBreakingLang {
-					breakWord()
-				}
-
-				section := ch >> 8   // Chop off the last two hex digits
-				position := ch % 256 // Last two hex digits
-
-				if tb, ok := table.Tables[section]; ok {
-					if len(tb) > int(position) {
-						subst := tb[position]
-						// replace some problematic characters
-						subst = strings.ReplaceAll(subst, "'", "_sq_")
-						subst = strings.ReplaceAll(subst, "\\", "_bs_")
-						subst = strings.TrimSpace(subst)
-						appendStr(subst)
-
-						if isNonBreakingLang || len(subst) == 0 || subst[len(subst)-1] == ' ' {
-							breakWord()
-						}
-					}
-				}
+				lexeme += string(ch)
 			}
-
 			continue
 		}
 

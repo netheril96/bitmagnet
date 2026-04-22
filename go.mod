@@ -27,7 +27,6 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.6.5
 	github.com/joho/godotenv v1.5.1
 	github.com/mgdigital/gorm-cache/v2 v2.0.0-20230912113927-f2a8dd92a386
-	github.com/mozillazg/go-unidecode v0.2.0
 	github.com/onsi/ginkgo/v2 v2.23.3
 	github.com/onsi/gomega v1.36.2
 	github.com/pressly/goose/v3 v3.24.1

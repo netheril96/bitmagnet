@@ -29,10 +29,10 @@ func TestAppQueryToTsquery(t *testing.T) {
 			"unmatched parens", "\"make me a \" . (sandwich | panini",
 			"make <-> me <-> a <-> (sandwich | panini)",
 		},
-		{"Ukrainian", "зроби мені бутерброд", "zrobi & meni & buterbrod"},
-		{"Chinese", "给我做一个三明治", "Gei <-> Wo <-> Zuo <-> Yi <-> Ge <-> San <-> Ming <-> Zhi"},
-		{"Arabic", "اصنع لي شطيرة", "'Sn`' & ly & 'shTyr@'"},
-		{"Arabic (quoted)", "\"اصنع لي شطيرة\"", "'Sn`' <-> ly <-> 'shTyr@'"},
+		{"Ukrainian", "зроби мені бутерброд", "'зроби' & 'мені' & 'бутерброд'"},
+		{"Chinese", "给我做一个三明治", "'给' <-> '我' <-> '做' <-> '一' <-> '个' <-> '三' <-> '明' <-> '治'"},
+		{"Arabic", "اصنع لي شطيرة", "'اصنع' & 'لي' & 'شطيرة'"},
+		{"Arabic (quoted)", "\"اصنع لي شطيرة\"", "'اصنع' <-> 'لي' <-> 'شطيرة'"},
 		{"ampersand prefix", "&eacute;", "eacute"},
 	}
 	for _, tt := range tests {

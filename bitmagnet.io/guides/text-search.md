@@ -42,7 +42,7 @@ Parentheses can be used to control operator precedence. For example, searching f
 
 ## Normalisation
 
-Search text is case-insensitive. Any punctuation characters not mentioned above are treated as whitespace. The search index along with search terms are normalised to ascii characters (meaning searches for `cafe` will match records containing "café", and vice versa). This applies to all languages, for example simplified and traditional Chinese characters can be considered interchangeable for search.
+Search text is case-insensitive. Any punctuation characters not mentioned above are treated as whitespace. Unicode characters are preserved as-is (meaning searches for `café` will only match records containing `café`, and not `cafe`).
 
 ## Syntax validation
 
