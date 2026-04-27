@@ -7,6 +7,7 @@ import (
 	"github.com/bitmagnet-io/bitmagnet/internal/app/cmd/classifiercmd"
 	"github.com/bitmagnet-io/bitmagnet/internal/app/cmd/configcmd"
 	"github.com/bitmagnet-io/bitmagnet/internal/app/cmd/processcmd"
+	"github.com/bitmagnet-io/bitmagnet/internal/app/cmd/reindexcmd"
 	"github.com/bitmagnet-io/bitmagnet/internal/app/cmd/reprocesscmd"
 	"github.com/bitmagnet-io/bitmagnet/internal/app/cmd/workercmd"
 	"github.com/bitmagnet-io/bitmagnet/internal/blocking/blockingfx"
@@ -66,6 +67,7 @@ func New() fx.Option {
 			// cli commands:
 			classifiercmd.New,
 			configcmd.New,
+			reindexcmd.New,
 			reprocesscmd.New,
 			processcmd.New,
 			workercmd.New,
