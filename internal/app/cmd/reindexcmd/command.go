@@ -1,8 +1,13 @@
 package reindexcmd
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/bitmagnet-io/bitmagnet/internal/database/dao"
 	"github.com/bitmagnet-io/bitmagnet/internal/lazy"
@@ -77,13 +82,59 @@ func (p Params) action(ctx *cli.Context) error {
 	return nil
 }
 
+type progressBar struct {
+	message   string
+	total     int64
+	current   int64
+	initial   int64
+	startTime time.Time
+}
+
+func (pb *progressBar) update(current int64) {
+	pb.current = current
+	elapsed := time.Since(pb.startTime)
+	speed := 0.0
+	if elapsed > 0 {
+		speed = float64(pb.current-pb.initial) / elapsed.Seconds()
+	}
+	percent := 0.0
+	if pb.total > 0 {
+		percent = float64(pb.current) / float64(pb.total) * 100
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	eta := time.Duration(0)
+	if speed > 0 && pb.total > pb.current {
+		remaining := float64(pb.total - pb.current)
+		eta = time.Duration(remaining/speed) * time.Second
+	}
+
+	barLen := 20
+	filledLen := int(float64(barLen) * percent / 100)
+	if filledLen > barLen {
+		filledLen = barLen
+	}
+	bar := strings.Repeat("#", filledLen) + strings.Repeat("-", barLen-filledLen)
+
+	fmt.Fprintf(os.Stderr, "\r%s [%s] %5.2f%% (%d/%d) [%.2f/s] ETA %s",
+		pb.message, bar, percent, pb.current, pb.total, speed, eta.Round(time.Second))
+}
+
 func (p Params) saveCursor(cursor *Cursor) {
 	data, _ := json.Marshal(cursor)
 	_ = os.WriteFile(cursorFile, data, 0644)
 }
 
 func (p Params) reindexTorrentContents(ctx *cli.Context, d *dao.Query, cursor *Cursor, batchSize int) error {
-	p.Logger.Info("Reindexing torrent_contents...")
+	initial := int64(binary.BigEndian.Uint32(cursor.TorrentContentsInfoHash[:4]))
+	pb := progressBar{
+		message:   "torrent_contents",
+		total:     math.MaxUint32,
+		current:   initial,
+		initial:   initial,
+		startTime: time.Now(),
+	}
 	for {
 		tcs, err := d.TorrentContent.WithContext(ctx.Context).
 			Where(d.TorrentContent.InfoHash.Gt(cursor.TorrentContentsInfoHash)).
@@ -94,6 +145,8 @@ func (p Params) reindexTorrentContents(ctx *cli.Context, d *dao.Query, cursor *C
 			return err
 		}
 		if len(tcs) == 0 {
+			pb.update(pb.total)
+			fmt.Fprintln(os.Stderr)
 			break
 		}
 		for _, tc := range tcs {
@@ -104,13 +157,44 @@ func (p Params) reindexTorrentContents(ctx *cli.Context, d *dao.Query, cursor *C
 			cursor.TorrentContentsInfoHash = tc.InfoHash
 		}
 		p.saveCursor(cursor)
-		p.Logger.Infof("Processed %d torrent_contents, last info_hash: %s", len(tcs), cursor.TorrentContentsInfoHash)
+		pb.update(int64(binary.BigEndian.Uint32(cursor.TorrentContentsInfoHash[:4])))
 	}
 	return nil
 }
 
 func (p Params) reindexContent(ctx *cli.Context, d *dao.Query, cursor *Cursor, batchSize int) error {
-	p.Logger.Info("Reindexing content...")
+	total, err := d.Content.WithContext(ctx.Context).Count()
+	if err != nil {
+		return err
+	}
+	remaining := total
+	if cursor.ContentType != "" {
+		q := d.Content.WithContext(ctx.Context)
+		ct, _ := model.ParseContentType(cursor.ContentType)
+		q = q.Where(
+			d.Content.Type.Gt(ct.String()),
+		).Or(
+			d.Content.Type.Eq(ct.String()),
+			d.Content.Source.Gt(cursor.ContentSource),
+		).Or(
+			d.Content.Type.Eq(ct.String()),
+			d.Content.Source.Eq(cursor.ContentSource),
+			d.Content.ID.Gt(cursor.ContentID),
+		)
+		r, err := q.Count()
+		if err == nil {
+			remaining = r
+		}
+	}
+	initial := total - remaining
+	pb := progressBar{
+		message:   "content         ",
+		total:     total,
+		current:   initial,
+		initial:   initial,
+		startTime: time.Now(),
+	}
+	var processed int64 = initial
 	for {
 		// Composite cursor logic for (type, source, id)
 		q := d.Content.WithContext(ctx.Context)
@@ -135,6 +219,8 @@ func (p Params) reindexContent(ctx *cli.Context, d *dao.Query, cursor *Cursor, b
 			return err
 		}
 		if len(cs) == 0 {
+			pb.update(pb.total)
+			fmt.Fprintln(os.Stderr)
 			break
 		}
 		for _, c := range cs {
@@ -147,7 +233,8 @@ func (p Params) reindexContent(ctx *cli.Context, d *dao.Query, cursor *Cursor, b
 			cursor.ContentID = c.ID
 		}
 		p.saveCursor(cursor)
-		p.Logger.Infof("Processed %d content, last PK: %s/%s/%s", len(cs), cursor.ContentType, cursor.ContentSource, cursor.ContentID)
+		processed += int64(len(cs))
+		pb.update(processed)
 	}
 	return nil
 }
