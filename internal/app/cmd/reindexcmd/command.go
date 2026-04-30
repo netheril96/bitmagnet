@@ -110,14 +110,14 @@ func (pb *progressBar) update(current int64) {
 		eta = time.Duration(remaining/speed) * time.Second
 	}
 
-	barLen := 20
+	barLen := 50
 	filledLen := int(float64(barLen) * percent / 100)
 	if filledLen > barLen {
 		filledLen = barLen
 	}
 	bar := strings.Repeat("#", filledLen) + strings.Repeat("-", barLen-filledLen)
 
-	fmt.Fprintf(os.Stderr, "\r%s [%s] %5.2f%% (%d/%d) [%.2f/s] ETA %s",
+	fmt.Fprintf(os.Stderr, "\r%s [%s] %7.4f%% (%d/%d) [%.2f/s] ETA %s",
 		pb.message, bar, percent, pb.current, pb.total, speed, eta.Round(time.Second))
 }
 
